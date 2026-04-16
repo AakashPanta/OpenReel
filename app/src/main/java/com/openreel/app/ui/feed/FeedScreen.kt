@@ -1,178 +1,411 @@
 package com.openreel.app.ui.feed
 
-import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.*
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.ui.PlayerView
-import com.openreel.app.ui.theme.*
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import com.openreel.app.data.model.VideoPost
+import com.openreel.app.ui.theme.ReelAccent
+import com.openreel.app.ui.theme.ReelBlack
+import com.openreel.app.ui.theme.ReelSurfaceAlt
+import com.openreel.app.ui.theme.ReelTextMuted
 
 @Composable
 fun FeedScreen(viewModel: FeedViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val controller = remember { FeedPlayerController(context) }
-    val pager = rememberPagerState(pageCount = { uiState.videos.size })
+    val pagerState = rememberPagerState(pageCount = { uiState.videos.size })
 
-    DisposableEffect(Unit) {
-        val obs = LifecycleEventObserver { _, e ->
-            if (e == Lifecycle.Event.ON_RESUME) controller.resume()
-            if (e == Lifecycle.Event.ON_PAUSE) controller.pause()
-        }
-        lifecycleOwner.lifecycle.addObserver(obs)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(obs)
-            controller.release()
-        }
-    }
-
-    LaunchedEffect(pager.settledPage) {
-        val v = uiState.videos.getOrNull(pager.settledPage) ?: return@LaunchedEffect
-        controller.play(v)
-        controller.preload(uiState.videos.getOrNull(pager.settledPage + 1))
-    }
-
-    Box(Modifier.fillMaxSize()) {
-
+    Box(modifier = Modifier.fillMaxSize()) {
         VerticalPager(
-            state = pager,
+            state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
+            ReelPage(video = uiState.videos[page])
+        }
 
-            val video = uiState.videos[page]
-            val active = controller.activeVideoId == video.id
+        FeedHeader(
+            selectedTab = uiState.selectedTab,
+            onTabSelected = viewModel::setTab,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 14.dp)
+        )
+    }
+}
 
-            Box(Modifier.fillMaxSize()) {
-
-                if (active) {
-                    AndroidView(
-                        factory = {
-                            PlayerView(it).apply {
-                                useController = false
-                                player = controller.player
-                                layoutParams = FrameLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+@Composable
+private fun FeedHeader(
+    selectedTab: String,
+    onTabSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        listOf("Following", "For You").forEach { label ->
+            val selected = selectedTab == label
+            Surface(
+                onClick = { onTabSelected(label) },
+                shape = RoundedCornerShape(999.dp),
+                color = if (selected) {
+                    ReelAccent.copy(alpha = 0.20f)
                 } else {
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(video.palette)
-                        )
-                    )
-                }
+                    ReelBlack.copy(alpha = 0.34f)
+                },
+                tonalElevation = if (selected) 3.dp else 0.dp,
+                modifier = Modifier.padding(horizontal = 6.dp)
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp)
+                )
+            }
+        }
+    }
+}
 
-                // DARK OVERLAY
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.Transparent,
-                                Color.Black.copy(0.6f)
-                            )
+@Composable
+private fun ReelPage(video: VideoPost) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(video.palette))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            ReelBlack.copy(alpha = 0.12f),
+                            ReelBlack.copy(alpha = 0.26f),
+                            ReelBlack.copy(alpha = 0.82f)
                         )
                     )
                 )
+        )
 
-                // HEADER FIXED (NO OVERLAP)
-                Row(
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("Following", "For You").forEach {
-                        FilterChip(
-                            selected = uiState.selectedTab == it,
-                            onClick = { viewModel.setTab(it) },
-                            label = { Text(it) }
+        LinearProgressIndicator(
+            progress = { video.watchedPercent.coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 14.dp, top = 94.dp)
+                .height(4.dp)
+                .clip(CircleShape),
+            color = MaterialTheme.colorScheme.onBackground,
+            trackColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.16f)
+        )
+
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = ReelBlack.copy(alpha = 0.32f),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 16.dp, top = 118.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "${video.category} • ${video.durationLabel}",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+
+        Surface(
+            shape = CircleShape,
+            color = ReelBlack.copy(alpha = 0.34f),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(20.dp)
+                    .size(34.dp)
+            )
+        }
+
+        ActionRail(
+            video = video,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 14.dp, bottom = 24.dp)
+        )
+
+        BottomInfoBlock(
+            video = video,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 96.dp, bottom = 24.dp)
+        )
+    }
+}
+
+@Composable
+private fun BottomInfoBlock(
+    video: VideoPost,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AvatarBubble(text = video.creator.avatarText)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = video.creator.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (video.creator.verified) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.Verified,
+                            contentDescription = null,
+                            tint = ReelAccent,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
+                Text(
+                    text = "${video.creator.handle} • ${video.creator.followers} followers",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ReelTextMuted
+                )
+            }
 
-                // RIGHT ACTIONS (SPACING FIX)
-                Column(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 12.dp, bottom = 80.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+            Surface(
+                onClick = {},
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.onBackground
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-
-                    Icon(Icons.Rounded.Favorite, null)
-                    Text(video.stat.likes)
-
-                    Icon(Icons.Rounded.ChatBubbleOutline, null)
-                    Text(video.stat.comments)
-
-                    Icon(Icons.Rounded.Share, null)
-                    Text(video.stat.shares)
-                }
-
-                // BOTTOM CONTENT FIXED WIDTH
-                Column(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp, end = 90.dp, bottom = 70.dp)
-                ) {
-
-                    Text(video.creator.displayName, color = Color.White)
-
-                    Spacer(Modifier.height(6.dp))
-
-                    Text(video.title, color = Color.White)
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Text(video.caption, color = Color.LightGray)
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // CHIP FIX (IMPORTANT)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        video.tags.take(3).forEach {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text("#$it") }
-                            )
-                        }
-                    }
-                }
-
-                // LOADER (DELAYED FEEL)
-                if (active && controller.isBuffering) {
-                    CircularProgressIndicator(
-                        Modifier.align(Alignment.Center)
+                    Icon(
+                        imageVector = if (video.isFollowingCreator) {
+                            Icons.Rounded.Verified
+                        } else {
+                            Icons.Rounded.Add
+                        },
+                        contentDescription = null,
+                        tint = ReelBlack,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (video.isFollowingCreator) "Following" else "Follow",
+                        color = ReelBlack,
+                        style = MaterialTheme.typography.labelLarge
                     )
                 }
             }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        Text(
+            text = video.title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Text(
+            text = video.caption,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.92f),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            video.tags.forEach { tag ->
+                AssistChip(
+                    onClick = {},
+                    label = { Text("#$tag", maxLines = 1) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = ReelSurfaceAlt.copy(alpha = 0.82f)
+                    )
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = ReelBlack.copy(alpha = 0.32f)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(
+                    text = "Why you are seeing this",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Matched on ${video.tags.first()} + strong completion patterns + creator affinity from similar posts.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.84f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionRail(
+    video: VideoPost,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        ActionMetric(
+            label = video.stat.likes,
+            icon = Icons.Rounded.Favorite,
+            active = video.isLiked
+        )
+        ActionMetric(
+            label = video.stat.comments,
+            icon = Icons.Rounded.ChatBubbleOutline
+        )
+        ActionMetric(
+            label = video.stat.shares,
+            icon = Icons.Rounded.Share
+        )
+        ActionMetric(
+            label = video.stat.saves,
+            icon = Icons.Rounded.BookmarkBorder,
+            active = video.isSaved
+        )
+        ActionMetric(
+            label = "Loop",
+            icon = Icons.Rounded.Repeat
+        )
+    }
+}
+
+@Composable
+private fun AvatarBubble(text: String) {
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(ReelBlack.copy(alpha = 0.35f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun ActionMetric(
+    label: String,
+    icon: ImageVector,
+    active: Boolean = false
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = if (active) {
+            ReelAccent.copy(alpha = 0.22f)
+        } else {
+            ReelBlack.copy(alpha = 0.24f)
+        }
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (active) ReelAccent else MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge
+            )
         }
     }
 }
