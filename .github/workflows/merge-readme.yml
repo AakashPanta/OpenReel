@@ -1,0 +1,65 @@
+name: Merge Scaffold README
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  merge-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Merge README.monorepo-scaffold.md into README.md
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          main_readme = Path("README.md")
+          scaffold_readme = Path("README.monorepo-scaffold.md")
+
+          if not main_readme.exists():
+              raise SystemExit("README.md not found")
+
+          if not scaffold_readme.exists():
+              raise SystemExit("README.monorepo-scaffold.md not found")
+
+          main_text = main_readme.read_text(encoding="utf-8").rstrip()
+          scaffold_text = scaffold_readme.read_text(encoding="utf-8").strip()
+
+          marker = "\n\n---\n\n## Monorepo Scaffold\n\n"
+
+          if "## Monorepo Scaffold" in main_text:
+              print("README already contains merged scaffold section. Deleting extra scaffold file only.")
+          else:
+              merged = main_text + marker + scaffold_text + "\n"
+              main_readme.write_text(merged, encoding="utf-8")
+              print("Merged scaffold README into README.md")
+
+          scaffold_readme.unlink()
+          print("Deleted README.monorepo-scaffold.md")
+          PY
+
+      - name: Show changed files
+        run: git status --short
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add README.md README.monorepo-scaffold.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Merge monorepo scaffold README into main README"
+          git push
