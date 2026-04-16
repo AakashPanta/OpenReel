@@ -23,11 +23,67 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Prepare log directory
+        run: mkdir -p build-logs
 
-      - name: Upload APK
+      - name: Save environment info
+        shell: bash
+        run: |
+          {
+            echo "Repository: $GITHUB_REPOSITORY"
+            echo "Ref: $GITHUB_REF"
+            echo "SHA: $GITHUB_SHA"
+            echo "Runner: $RUNNER_OS"
+            echo "Java:"
+            java -version
+            echo
+            echo "Gradle wrapper properties:"
+            cat gradle/wrapper/gradle-wrapper.properties
+          } > build-logs/environment.txt 2>&1
+
+      - name: Save Gradle version output
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --version 2>&1 | tee build-logs/gradle-version.txt
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew clean assembleDebug --stacktrace --info --no-daemon 2>&1 | tee build-logs/gradle-build.log
+
+      - name: Collect extra reports
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p build-logs/extra
+
+          if [ -d "app/build/reports" ]; then
+            cp -R app/build/reports build-logs/extra/reports
+          fi
+
+          if [ -d "app/build/outputs/logs" ]; then
+            cp -R app/build/outputs/logs build-logs/extra/outputs-logs
+          fi
+
+          if [ -f "app/build/intermediates/merged_manifests/debug/processDebugMainManifest/AndroidManifest.xml" ]; then
+            cp "app/build/intermediates/merged_manifests/debug/processDebugMainManifest/AndroidManifest.xml" \
+               "build-logs/extra/merged-debug-manifest.xml"
+          fi
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openreel-build-logs
+          path: build-logs
+          if-no-files-found: error
+
+      - name: Upload debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: openreel-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

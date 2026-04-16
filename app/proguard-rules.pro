@@ -1,1 +1,1 @@
-# Intentionally minimal for MVP starter.
+# OpenReel ProGuard rules
