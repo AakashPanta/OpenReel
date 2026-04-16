@@ -1,4 +1,4 @@
-name: OpenReel Android CI
+name: OpenReel Android CI - Self Healing
 
 on:
   push:
@@ -18,18 +18,57 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Generate Gradle Wrapper (if missing)
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Self-Heal Project Configuration
         run: |
+          echo "🔧 Applying self-healing fixes..."
+
+          # 1. Create Gradle Wrapper if missing
           if [ ! -f "./gradlew" ]; then
-            echo "Gradle wrapper not found. Generating..."
+            echo "→ Generating Gradle wrapper..."
             gradle wrapper --gradle-version 8.10
             chmod +x gradlew
+          fi
+
+          # 2. Fix settings.gradle.kts (add pluginManagement)
+          if [ -f "settings.gradle.kts" ]; then
+            echo "→ Fixing settings.gradle.kts..."
+            cat > settings.gradle.kts << 'EOL'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "OpenReel"
+include(":app")
+EOL
+          fi
+
+          # 3. Fix app/build.gradle.kts plugins syntax (most common cause of failure)
+          if [ -f "app/build.gradle.kts" ]; then
+            echo "→ Fixing build.gradle.kts plugin syntax..."
+            sed -i 's/id("com.android.application") version "8.5.0"/id("com.android.application") version "8.7.0"/' app/build.gradle.kts
+            sed -i 's/id("org.jetbrains.kotlin.android") version "1.9.24"/id("org.jetbrains.kotlin.android") version "2.0.20"/' app/build.gradle.kts
+            sed -i 's/id("org.jetbrains.kotlin.plugin.compose") version "1.9.24"/id("org.jetbrains.kotlin.plugin.compose") version "2.0.20"/' app/build.gradle.kts
           fi
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: openreel-debug-apk
