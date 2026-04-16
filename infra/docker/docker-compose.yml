@@ -1,0 +1,103 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: openreel
+      POSTGRES_USER: openreel
+      POSTGRES_PASSWORD: openreel
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+
+  nats:
+    image: nats:2.11-alpine
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  seaweedfs-master:
+    image: chrislusf/seaweedfs:3.93
+    command: "master"
+    ports:
+      - "9333:9333"
+
+  seaweedfs-volume:
+    image: chrislusf/seaweedfs:3.93
+    command: 'volume -mserver="seaweedfs-master:9333" -port=8080 -dir=/data'
+    depends_on:
+      - seaweedfs-master
+    volumes:
+      - seaweedfs_volume_data:/data
+
+  seaweedfs-filer:
+    image: chrislusf/seaweedfs:3.93
+    command: 'filer -master="seaweedfs-master:9333"'
+    depends_on:
+      - seaweedfs-master
+      - seaweedfs-volume
+    ports:
+      - "8888:8888"
+      - "8333:8333"
+
+  tusd:
+    image: tusproject/tusd:v2.8.0
+    command:
+      - -host=0.0.0.0
+      - -port=1080
+      - -base-path=/files/
+      - -behind-proxy
+      - -dir=/data/tusd
+    ports:
+      - "1080:1080"
+    volumes:
+      - tusd_data:/data/tusd
+
+  opensearch:
+    image: opensearchproject/opensearch:3
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+
+  api:
+    build:
+      context: ../../services/api
+    environment:
+      APP_ENV: development
+      API_PORT: 8080
+      PUBLIC_BASE_URL: http://localhost:8080
+      DATABASE_URL: postgres://openreel:openreel@postgres:5432/openreel?sslmode=disable
+      VALKEY_ADDR: valkey:6379
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8081
+      KEYCLOAK_REALM: openreel
+      KEYCLOAK_CLIENT_ID: openreel-android
+      TUSD_ENDPOINT: http://tusd:1080/files
+      SEAWEEDFS_BUCKET: videos
+      OPENSEARCH_URL: http://opensearch:9200
+      UMAMI_URL: http://umami:3000
+    depends_on:
+      - postgres
+      - valkey
+      - nats
+      - tusd
+      - opensearch
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
+  seaweedfs_volume_data:
+  tusd_data:

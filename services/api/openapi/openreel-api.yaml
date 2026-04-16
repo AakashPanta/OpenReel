@@ -1,0 +1,159 @@
+openapi: 3.1.0
+info:
+  title: OpenReel API
+  version: 0.1.0
+  description: Minimal OSS backend scaffold for the OpenReel app.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      responses:
+        '200':
+          description: Service health
+  /v1/feed:
+    get:
+      operationId: getFeed
+      parameters:
+        - in: query
+          name: tab
+          schema:
+            type: string
+            enum: [for_you, following]
+        - in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Feed page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedResponse'
+  /v1/uploads/create:
+    post:
+      operationId: createUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUploadRequest'
+      responses:
+        '201':
+          description: Resumable upload session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUploadResponse'
+components:
+  schemas:
+    FeedResponse:
+      type: object
+      properties:
+        tab:
+          type: string
+        cursor:
+          type: string
+        next_cursor:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        explanation:
+          type: array
+          items:
+            type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedItem'
+    FeedItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        caption:
+          type: string
+        playback_url:
+          type: string
+        thumbnail_url:
+          type: string
+        duration_sec:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        creator:
+          $ref: '#/components/schemas/FeedCreator'
+        stats:
+          $ref: '#/components/schemas/FeedStats'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReasonLabel'
+    FeedCreator:
+      type: object
+      properties:
+        id:
+          type: string
+        display_name:
+          type: string
+        handle:
+          type: string
+        verified:
+          type: boolean
+    FeedStats:
+      type: object
+      properties:
+        likes:
+          type: integer
+        comments:
+          type: integer
+        shares:
+          type: integer
+        saves:
+          type: integer
+    ReasonLabel:
+      type: object
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+    CreateUploadRequest:
+      type: object
+      required: [file_name, size_bytes]
+      properties:
+        file_name:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+    CreateUploadResponse:
+      type: object
+      properties:
+        upload_id:
+          type: string
+        upload_url:
+          type: string
+        tus_headers:
+          type: object
+          additionalProperties:
+            type: string
+        draft_video_id:
+          type: string
+        status:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        processing_webhook:
+          type: string
