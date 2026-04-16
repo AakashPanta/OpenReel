@@ -1,4 +1,4 @@
-name: Apply OpenReel Fix With PAT
+name: Apply OpenReel Fix With Classic PAT
 
 on:
   workflow_dispatch:
@@ -11,11 +11,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository with PAT
+      - name: Checkout repository with classic PAT
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.WORKFLOW_PAT }}
           persist-credentials: true
+
+      - name: Validate PAT secret exists
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.WORKFLOW_PAT }}" ]; then
+            echo "WORKFLOW_PAT secret is missing."
+            exit 1
+          fi
 
       - name: Rewrite OpenReel files
         shell: bash
@@ -233,31 +241,6 @@ jobs:
                     name: openreel-debug-apk
                     path: app/build/outputs/apk/debug/*.apk
                     if-no-files-found: error
-          ''',
-
-              ".github/workflows/apply-openreel-fix.yml": r'''name: Apply OpenReel Fix With PAT
-
-          on:
-            workflow_dispatch:
-
-          permissions:
-            contents: write
-
-          jobs:
-            apply-fix:
-              runs-on: ubuntu-latest
-
-              steps:
-                - name: Checkout repository with PAT
-                  uses: actions/checkout@v4
-                  with:
-                    token: ${{ secrets.WORKFLOW_PAT }}
-                    persist-credentials: true
-
-                - name: Rewrite OpenReel files
-                  shell: bash
-                  run: |
-                    echo "This workflow file is self-managed by apply-openreel-fix.yml"
           '''
           }
 
@@ -272,7 +255,7 @@ jobs:
       - name: Show changed files
         run: git status --short
 
-      - name: Force remote to use PAT
+      - name: Force remote to use classic PAT
         shell: bash
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.WORKFLOW_PAT }}@github.com/${{ github.repository }}.git
