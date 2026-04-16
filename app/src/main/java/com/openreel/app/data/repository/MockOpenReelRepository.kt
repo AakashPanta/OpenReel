@@ -45,12 +45,20 @@ class MockOpenReelRepository : OpenReelRepository {
         )
     )
 
+    private val sampleVideos = listOf(
+        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+    )
+
     override fun feed(): List<VideoPost> = listOf(
         VideoPost(
             id = "v1",
             creator = creators[0],
             title = "Designing a transparent short-video feed",
             caption = "How we rank reels without black-box logic. Watch-time, recency, creator-follow affinity, and topic intent all stay explainable.",
+            videoUrl = sampleVideos[0],
             tags = listOf("opensource", "ranking", "productdesign"),
             category = "For You",
             durationLabel = "00:38",
@@ -66,6 +74,7 @@ class MockOpenReelRepository : OpenReelRepository {
             creator = creators[1],
             title = "Mobile-first motion systems that feel premium",
             caption = "Swipe transitions should feel tactile, not heavy. The secret is controlled depth, restrained blur, and fast feedback.",
+            videoUrl = sampleVideos[1],
             tags = listOf("motion", "ux", "compose"),
             category = "Following",
             durationLabel = "00:24",
@@ -79,6 +88,7 @@ class MockOpenReelRepository : OpenReelRepository {
             creator = creators[2],
             title = "Creator analytics you can actually act on",
             caption = "Retention cliffs, share velocity, replay loops, and follow conversion should be visible from day one.",
+            videoUrl = sampleVideos[2],
             tags = listOf("analytics", "creator", "retention"),
             category = "For You",
             durationLabel = "00:46",
@@ -91,6 +101,7 @@ class MockOpenReelRepository : OpenReelRepository {
             creator = creators[3],
             title = "Backend boundaries for social video apps",
             caption = "Keep media, social graph, notifications, moderation, and feed computation modular from the beginning.",
+            videoUrl = sampleVideos[3],
             tags = listOf("backend", "architecture", "modular"),
             category = "For You",
             durationLabel = "01:02",
