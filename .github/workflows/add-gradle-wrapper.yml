@@ -1,4 +1,4 @@
-name: Add Gradle Wrapper
+name: Fix AGP 9 Kotlin Setup and Add Gradle Wrapper
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  add-wrapper:
+  fix-and-add-wrapper:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,6 +19,86 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Rewrite top-level build.gradle.kts
+        shell: bash
+        run: |
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "9.1.1" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.3.20" apply false
+          }
+          EOF
+
+      - name: Rewrite app/build.gradle.kts
+        shell: bash
+        run: |
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.plugin.compose")
+          }
+
+          android {
+              namespace = "com.openreel.app"
+              compileSdk = 36
+
+              defaultConfig {
+                  applicationId = "com.openreel.app"
+                  minSdk = 26
+                  targetSdk = 36
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              buildFeatures {
+                  compose = true
+              }
+
+              packaging {
+                  resources {
+                      excludes += "/META-INF/{AL2.0,LGPL2.1}"
+                  }
+              }
+          }
+
+          dependencies {
+              val composeBom = platform("androidx.compose:compose-bom:2025.12.00")
+
+              implementation(composeBom)
+              androidTestImplementation(composeBom)
+
+              implementation("androidx.core:core-ktx:1.18.0")
+              implementation("androidx.activity:activity-compose:1.11.0")
+              implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
+              implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
+              implementation("androidx.navigation:navigation-compose:2.9.7")
+
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-tooling-preview")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.compose.material:material-icons-extended")
+
+              debugImplementation("androidx.compose.ui:ui-tooling")
+              debugImplementation("androidx.compose.ui:ui-test-manifest")
+          }
+          EOF
 
       - name: Download Gradle 9.3.1
         shell: bash
@@ -42,20 +122,18 @@ jobs:
       - name: Clean temporary files
         shell: bash
         run: |
-          set -euo pipefail
           rm -rf gradle-9.3.1
           rm -f gradle-9.3.1-bin.zip
 
       - name: Verify wrapper files
         shell: bash
         run: |
-          set -euo pipefail
           test -f gradlew
           test -f gradlew.bat
           test -f gradle/wrapper/gradle-wrapper.jar
           test -f gradle/wrapper/gradle-wrapper.properties
 
-      - name: Commit and push wrapper files
+      - name: Commit and push changes
         shell: bash
         run: |
           set -euo pipefail
@@ -63,12 +141,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties
+          git add build.gradle.kts app/build.gradle.kts gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties .github/workflows/add-gradle-wrapper.yml
 
           if git diff --cached --quiet; then
-            echo "No wrapper changes to commit."
+            echo "No changes to commit."
             exit 0
           fi
 
-          git commit -m "Add Gradle wrapper files"
+          git commit -m "Fix AGP 9 Kotlin setup and add Gradle wrapper"
           git push
