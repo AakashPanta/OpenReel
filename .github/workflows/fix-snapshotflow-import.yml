@@ -1,0 +1,47 @@
+name: Fix snapshotFlow Import
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fix FeedScreen import
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("app/src/main/java/com/openreel/app/ui/feed/FeedScreen.kt")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              "import kotlinx.coroutines.flow.snapshotFlow",
+              "import androidx.compose.runtime.snapshotFlow"
+          )
+          path.write_text(text, encoding="utf-8")
+          print("snapshotFlow import fixed")
+          PY
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add app/src/main/java/com/openreel/app/ui/feed/FeedScreen.kt
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Fix snapshotFlow import"
+          git push
