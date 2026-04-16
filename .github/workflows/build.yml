@@ -1,4 +1,4 @@
-name: OpenReel Android CI - Self Healing
+name: OpenReel Android CI
 
 on:
   push:
@@ -21,18 +21,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: 🔧 Self-Heal Project (Fix All Common Issues)
+      - name: 🔧 Fix Project Configuration
         run: |
-          echo "Applying automatic fixes..."
+          echo "→ Generating Gradle wrapper..."
+          gradle wrapper --gradle-version 8.10
+          chmod +x gradlew
 
-          # Generate Gradle Wrapper
-          if [ ! -f "./gradlew" ]; then
-            echo "→ Creating Gradle wrapper..."
-            gradle wrapper --gradle-version 8.10
-            chmod +x gradlew
-          fi
-
-          # Fix settings.gradle.kts
+          echo "→ Fixing settings.gradle.kts..."
           cat > settings.gradle.kts << 'EOF'
 pluginManagement {
     repositories {
@@ -52,58 +47,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "OpenReel"
 include(":app")
-EOF
-
-          # Fix app/build.gradle.kts with correct stable plugins
-          cat > app/build.gradle.kts << 'EOF'
-plugins {
-    id("com.android.application") version "8.7.0"
-    id("org.jetbrains.kotlin.android") version "2.0.20"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.20"
-}
-
-android {
-    namespace = "com.openreel.app"
-    compileSdk = 35
-
-    defaultConfig {
-        applicationId = "com.openreel.app"
-        minSdk = 24
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1-mvp"
-    }
-
-    buildFeatures {
-        compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "2.0.20"
-    }
-}
-
-dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.activity:activity-compose:1.9.3")
-
-    implementation(platform("androidx.compose:compose-bom:2024.10.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.navigation:navigation-compose:2.8.0")
-    implementation("androidx.compose.foundation:foundation-pager:1.7.0")
-
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("io.coil-kt:coil-compose:2.7.0")
-
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-
-    debugImplementation("androidx.compose.ui:ui-tooling")
-}
 EOF
 
       - name: Build Debug APK
