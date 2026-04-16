@@ -6,6 +6,7 @@ import com.openreel.app.data.repository.MockOpenReelRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 data class FeedUiState(
     val selectedTab: String = "For You",
@@ -14,12 +15,30 @@ data class FeedUiState(
 
 class FeedViewModel : ViewModel() {
     private val repository = MockOpenReelRepository()
+    private val allVideos = repository.feed()
+
     private val _uiState = MutableStateFlow(
-        FeedUiState(videos = repository.feed())
+        FeedUiState(
+            selectedTab = "For You",
+            videos = filterVideos("For You")
+        )
     )
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
 
     fun setTab(label: String) {
-        _uiState.value = _uiState.value.copy(selectedTab = label)
+        _uiState.update {
+            it.copy(
+                selectedTab = label,
+                videos = filterVideos(label)
+            )
+        }
+    }
+
+    private fun filterVideos(tab: String): List<VideoPost> {
+        val filtered = when (tab) {
+            "Following" -> allVideos.filter { it.isFollowingCreator }
+            else -> allVideos
+        }
+        return if (filtered.isEmpty()) allVideos else filtered
     }
 }
