@@ -14,18 +14,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Ensure directories exist
+      - name: Rewrite OpenReel files safely
         shell: bash
         run: |
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/values-night
-          mkdir -p .github/workflows
+          python3 <<'PY'
+          from pathlib import Path
 
-      - name: Replace app/build.gradle.kts
-        shell: bash
-        run: |
-          cat > app/build.gradle.kts <<'EOF'
-          plugins {
+          files = {
+              "app/build.gradle.kts": r'''plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.plugin.compose")
           }
@@ -91,13 +87,9 @@ jobs:
               debugImplementation("androidx.compose.ui:ui-tooling")
               debugImplementation("androidx.compose.ui:ui-test-manifest")
           }
-          EOF
+          ''',
 
-      - name: Replace AndroidManifest.xml
-        shell: bash
-        run: |
-          cat > app/src/main/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              "app/src/main/AndroidManifest.xml": r'''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
               <application
                   android:allowBackup="true"
@@ -120,13 +112,9 @@ jobs:
               </application>
 
           </manifest>
-          EOF
+          ''',
 
-      - name: Replace day theme
-        shell: bash
-        run: |
-          cat > app/src/main/res/values/themes.xml <<'EOF'
-          <resources>
+              "app/src/main/res/values/themes.xml": r'''<resources>
               <style name="Theme.OpenReel" parent="Theme.Material3.Light.NoActionBar">
                   <item name="android:statusBarColor">@android:color/transparent</item>
                   <item name="android:navigationBarColor">@android:color/black</item>
@@ -134,13 +122,9 @@ jobs:
                   <item name="android:windowLightNavigationBar">false</item>
               </style>
           </resources>
-          EOF
+          ''',
 
-      - name: Replace night theme
-        shell: bash
-        run: |
-          cat > app/src/main/res/values-night/themes.xml <<'EOF'
-          <resources>
+              "app/src/main/res/values-night/themes.xml": r'''<resources>
               <style name="Theme.OpenReel" parent="Theme.Material3.Dark.NoActionBar">
                   <item name="android:statusBarColor">@android:color/transparent</item>
                   <item name="android:navigationBarColor">@android:color/black</item>
@@ -148,13 +132,17 @@ jobs:
                   <item name="android:windowLightNavigationBar">false</item>
               </style>
           </resources>
-          EOF
+          ''',
 
-      - name: Replace build-debug-apk workflow
-        shell: bash
-        run: |
-          cat > .github/workflows/build-debug-apk.yml <<'EOF'
-          name: Build Debug APK
+              "app/src/main/res/values/strings.xml": r'''<resources>
+              <string name="app_name">OpenReel</string>
+          </resources>
+          ''',
+
+              "app/proguard-rules.pro": r'''# OpenReel ProGuard rules
+          ''',
+
+              ".github/workflows/build-debug-apk.yml": r'''name: Build Debug APK
 
           on:
             workflow_dispatch:
@@ -243,7 +231,20 @@ jobs:
                     name: openreel-debug-apk
                     path: app/build/outputs/apk/debug/*.apk
                     if-no-files-found: error
-          EOF
+          '''
+          }
+
+          for path_str, content in files.items():
+              path = Path(path_str)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content.strip() + "\n", encoding="utf-8")
+
+          print("All files written successfully.")
+          PY
+
+      - name: Show changed files
+        shell: bash
+        run: git status --short
 
       - name: Commit and push changes
         shell: bash
@@ -251,17 +252,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add app/build.gradle.kts \
-                  app/src/main/AndroidManifest.xml \
-                  app/src/main/res/values/themes.xml \
-                  app/src/main/res/values-night/themes.xml \
-                  .github/workflows/build-debug-apk.yml \
-                  .github/workflows/apply-openreel-fix.yml
-
+          git add .
           if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0
           fi
 
-          git commit -m "Apply OpenReel theme and build workflow fix"
+          git commit -m "Apply OpenReel theme and workflow fix"
           git push
