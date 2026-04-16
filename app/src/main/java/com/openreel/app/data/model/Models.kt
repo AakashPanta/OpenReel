@@ -27,6 +27,7 @@ data class VideoPost(
     val creator: Creator,
     val title: String,
     val caption: String,
+    val videoUrl: String,
     val tags: List<String>,
     val category: String,
     val durationLabel: String,
