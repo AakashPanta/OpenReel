@@ -68,7 +68,7 @@ import com.openreel.app.ui.theme.ReelTextMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.snapshotFlow
+import androidx.compose.runtime.snapshotFlow
 
 @Composable
 fun FeedScreen(viewModel: FeedViewModel) {
