@@ -69,6 +69,17 @@ data class ProfileHighlight(
 )
 
 @Immutable
+data class UploadSession(
+    val uploadId: String,
+    val uploadUrl: String,
+    val draftVideoId: String,
+    val status: String,
+    val expiresAt: String,
+    val processingWebhook: String,
+    val tusHeaders: Map<String, String>
+)
+
+@Immutable
 sealed interface UploadStatus {
     data object Draft : UploadStatus
     data class Uploading(val progress: Float) : UploadStatus
