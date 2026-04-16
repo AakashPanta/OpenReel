@@ -20,6 +20,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
@@ -39,6 +42,9 @@ jobs:
             echo
             echo "Gradle wrapper properties:"
             cat gradle/wrapper/gradle-wrapper.properties
+            echo
+            echo "Gradle properties:"
+            cat gradle.properties
           } > build-logs/environment.txt 2>&1
 
       - name: Save Gradle version output
@@ -51,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew clean assembleDebug --stacktrace --info --no-daemon 2>&1 | tee build-logs/gradle-build.log
+          ./gradlew clean assembleDebug --build-cache --stacktrace --no-daemon 2>&1 | tee build-logs/gradle-build.log
 
       - name: Collect extra reports
         if: always()
