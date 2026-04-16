@@ -11,32 +11,21 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set ZIP name
-        id: vars
-        run: |
-          echo "zip_name=${GITHUB_REPOSITORY##*/}_source.zip" >> "$GITHUB_OUTPUT"
-
-      - name: Create source ZIP
-        run: |
-          zip -r "${{ steps.vars.outputs.zip_name }}" . \
-            -x ".git/*" \
-            -x ".gradle/*" \
-            -x ".idea/*" \
-            -x "**/.DS_Store" \
-            -x "**/build/*" \
-            -x "**/captures/*" \
-            -x "**/.cxx/*" \
-            -x "**/.externalNativeBuild/*" \
-            -x "local.properties" \
-            -x "*.apk" \
-            -x "*.aab"
-
-      - name: Show ZIP details
-        run: |
-          ls -lah "${{ steps.vars.outputs.zip_name }}"
-
-      - name: Upload ZIP artifact
+      - name: Upload source as artifact ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.vars.outputs.zip_name }}
-          path: ${{ steps.vars.outputs.zip_name }}
+          name: ${{ github.event.repository.name }}_source
+          path: |
+            .
+            !.git/**
+            !.gradle/**
+            !.idea/**
+            !**/.DS_Store
+            !**/build/**
+            !**/captures/**
+            !**/.cxx/**
+            !**/.externalNativeBuild/**
+            !local.properties
+            !**/*.apk
+            !**/*.aab
+          if-no-files-found: error
