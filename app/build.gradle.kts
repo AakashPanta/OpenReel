@@ -43,6 +43,7 @@ android {
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.12.00")
+    val media3Version = "1.10.0"
 
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -58,7 +59,11 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+
     implementation("com.google.android.material:material:1.13.0")
+
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
