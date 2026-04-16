@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -50,8 +51,9 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(20.dp),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
+        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
@@ -68,18 +70,37 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
                                 .background(ReelBlack),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("AD", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                "AD",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                         Spacer(Modifier.size(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(uiState.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text(
+                                    uiState.displayName,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
                                 Spacer(Modifier.size(6.dp))
-                                Icon(Icons.Rounded.Verified, contentDescription = null, tint = ReelAccent)
+                                Icon(
+                                    Icons.Rounded.Verified,
+                                    contentDescription = null,
+                                    tint = ReelAccent
+                                )
                             }
-                            Text(uiState.handle, style = MaterialTheme.typography.bodyLarge, color = ReelTextMuted)
+                            Text(
+                                uiState.handle,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = ReelTextMuted
+                            )
                         }
-                        Surface(shape = RoundedCornerShape(20.dp), color = ReelBlack.copy(alpha = 0.22f)) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = ReelBlack.copy(alpha = 0.22f)
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.Settings,
                                 contentDescription = null,
@@ -88,7 +109,11 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
                         }
                     }
                     Spacer(Modifier.height(16.dp))
-                    Text(uiState.bio, style = MaterialTheme.typography.bodyLarge, color = ReelTextMuted)
+                    Text(
+                        uiState.bio,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = ReelTextMuted
+                    )
                     Spacer(Modifier.height(18.dp))
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
@@ -106,7 +131,11 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
         }
 
         item {
-            Text(text = "Published videos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                text = "Published videos",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
             Spacer(Modifier.height(12.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
@@ -130,9 +159,17 @@ private fun HighlightCard(item: ProfileHighlight) {
         colors = CardDefaults.cardColors(containerColor = ReelBlack.copy(alpha = 0.22f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(item.value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                item.value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
             Spacer(Modifier.height(6.dp))
-            Text(item.label, style = MaterialTheme.typography.bodyMedium, color = ReelTextMuted)
+            Text(
+                item.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = ReelTextMuted
+            )
         }
     }
 }
@@ -151,9 +188,18 @@ private fun ProfileVideoCard(video: VideoPost) {
                     .background(Brush.verticalGradient(video.palette))
             )
             Column(modifier = Modifier.padding(14.dp)) {
-                Text(video.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2)
+                Text(
+                    video.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2
+                )
                 Spacer(Modifier.height(8.dp))
-                Text("${video.stat.likes} likes • ${video.stat.comments} comments", style = MaterialTheme.typography.bodyMedium, color = ReelTextMuted)
+                Text(
+                    "${video.stat.likes} likes • ${video.stat.comments} comments",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ReelTextMuted
+                )
             }
         }
     }
