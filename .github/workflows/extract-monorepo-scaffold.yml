@@ -1,0 +1,115 @@
+name: Extract Monorepo Scaffold
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_path:
+        description: "Path to the scaffold ZIP inside the repository"
+        required: true
+        default: "openreel-monorepo-scaffold.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install unzip and rsync
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip rsync
+
+      - name: Extract scaffold into repo root
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP_PATH="${{ github.event.inputs.zip_path }}"
+
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "ZIP not found: $ZIP_PATH"
+            exit 1
+          fi
+
+          TEMP_DIR="$(mktemp -d)"
+          EXTRACT_DIR="$TEMP_DIR/extracted"
+          mkdir -p "$EXTRACT_DIR"
+
+          unzip -q "$ZIP_PATH" -d "$EXTRACT_DIR"
+
+          # Flatten a single top-level folder like openreel-monorepo-scaffold/
+          TOP_COUNT=$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')
+          if [ "$TOP_COUNT" = "1" ]; then
+            ONLY_ITEM="$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1)"
+            if [ -d "$ONLY_ITEM" ]; then
+              SRC_ROOT="$ONLY_ITEM"
+            else
+              SRC_ROOT="$EXTRACT_DIR"
+            fi
+          else
+            SRC_ROOT="$EXTRACT_DIR"
+          fi
+
+          echo "Source root: $SRC_ROOT"
+
+          # Remove junk if present
+          find "$SRC_ROOT" -name "__MACOSX" -type d -prune -exec rm -rf {} + || true
+          find "$SRC_ROOT" -name ".DS_Store" -type f -delete || true
+
+          # Merge scaffold directories into repo root
+          for dir in services infra packages; do
+            if [ -d "$SRC_ROOT/$dir" ]; then
+              mkdir -p "$dir"
+              rsync -a "$SRC_ROOT/$dir"/ "$dir"/
+            fi
+          done
+
+          # Copy root-level scaffold files safely
+          if [ -f "$SRC_ROOT/.env.example" ]; then
+            if [ -f ".env.example" ]; then
+              cp "$SRC_ROOT/.env.example" ".env.monorepo-scaffold.example"
+            else
+              cp "$SRC_ROOT/.env.example" ".env.example"
+            fi
+          fi
+
+          if [ -f "$SRC_ROOT/README.md" ]; then
+            if [ -f "README.md" ]; then
+              cp "$SRC_ROOT/README.md" "README.monorepo-scaffold.md"
+            else
+              cp "$SRC_ROOT/README.md" "README.md"
+            fi
+          fi
+
+          # Delete the source ZIP after extraction
+          rm -f "$ZIP_PATH"
+
+          # Clean temp
+          rm -rf "$TEMP_DIR"
+
+      - name: Show changed files
+        run: git status --short
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Extract monorepo scaffold into repo root"
+          git push
