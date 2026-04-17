@@ -1,0 +1,93 @@
+name: Vendor Official PeerTube Docker Stack
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download official PeerTube docker stack
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_DIR="infra/docker/peertube"
+          mkdir -p "$BASE_DIR"
+          mkdir -p "$BASE_DIR/docker-volume/nginx"
+          mkdir -p "$BASE_DIR/docker-volume/nginx-logs"
+          mkdir -p "$BASE_DIR/docker-volume/certbot"
+
+          curl -fsSL \
+            https://raw.githubusercontent.com/Chocobozzz/PeerTube/master/support/docker/production/docker-compose.yml \
+            -o "$BASE_DIR/docker-compose.yml"
+
+          curl -fsSL \
+            https://raw.githubusercontent.com/Chocobozzz/PeerTube/master/support/docker/production/.env \
+            -o "$BASE_DIR/.env"
+
+          curl -fsSL \
+            https://raw.githubusercontent.com/Chocobozzz/PeerTube/master/support/nginx/peertube \
+            -o "$BASE_DIR/docker-volume/nginx/peertube"
+
+      - name: Write OpenReel PeerTube notes
+        shell: bash
+        run: |
+          cat > infra/docker/peertube/README.md <<'EOF'
+          # PeerTube Docker Stack for OpenReel
+
+          This directory vendors the official PeerTube Docker production stack into the OpenReel repo.
+
+          ## Important
+          - Choose your final hostname carefully before first start.
+          - Edit `.env` before running the stack.
+          - This stack is intentionally separate from `infra/docker/docker-compose.yml` to avoid service collisions with the rest of OpenReel.
+
+          ## Required `.env` fields
+          Replace these placeholders in `infra/docker/peertube/.env`:
+          - <MY POSTGRES USERNAME>
+          - <MY POSTGRES PASSWORD>
+          - <MY DOMAIN>
+          - <MY EMAIL ADDRESS>
+          - <MY PEERTUBE SECRET>
+
+          ## Suggested OpenReel usage
+          - Run PeerTube as the media/auth substrate.
+          - Keep OpenReel API as the adapter/ranking/mobile DTO layer.
+          - Point OpenReel API `PEERTUBE_BASE_URL` to your PeerTube base URL.
+
+          ## Run
+          cd infra/docker/peertube
+          docker compose up -d
+
+          ## Logs
+          docker compose logs -f peertube
+          EOF
+
+      - name: Show changed files
+        run: git status --short
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add infra/docker/peertube
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Vendor official PeerTube docker stack"
+          git push
