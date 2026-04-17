@@ -15,5 +15,17 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) GetFeed(w http.ResponseWriter, r *http.Request) {
-	common.WriteJSON(w, http.StatusOK, h.service.Get(r.URL.Query().Get("tab"), r.URL.Query().Get("cursor")))
+	resp, err := h.service.Get(
+		r.Context(),
+		r.URL.Query().Get("tab"),
+		r.URL.Query().Get("cursor"),
+	)
+	if err != nil {
+		common.WriteJSON(w, http.StatusBadGateway, map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	common.WriteJSON(w, http.StatusOK, resp)
 }

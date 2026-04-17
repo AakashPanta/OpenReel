@@ -8,18 +8,24 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AakashPanta/OpenReel/services/api/internal/auth"
 	"github.com/AakashPanta/OpenReel/services/api/internal/config"
 	"github.com/AakashPanta/OpenReel/services/api/internal/feed"
 	"github.com/AakashPanta/OpenReel/services/api/internal/httpx"
+	"github.com/AakashPanta/OpenReel/services/api/internal/peertube"
 	"github.com/AakashPanta/OpenReel/services/api/internal/uploads"
 )
 
 func main() {
 	cfg := config.Load()
 
-	feedService := feed.NewService()
-	uploadService := uploads.NewService(cfg)
-	router := httpx.NewRouter(cfg, feedService, uploadService)
+	peerTubeClient := peertube.NewClient(cfg)
+
+	authService := auth.NewService(cfg, peerTubeClient)
+	feedService := feed.NewService(cfg, peerTubeClient)
+	uploadService := uploads.NewService(cfg, peerTubeClient)
+
+	router := httpx.NewRouter(cfg, authService, feedService, uploadService)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -38,6 +44,7 @@ func main() {
 	}()
 
 	<-ctx.Done()
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

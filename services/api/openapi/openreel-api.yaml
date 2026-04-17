@@ -1,17 +1,36 @@
 openapi: 3.1.0
 info:
   title: OpenReel API
-  version: 0.1.0
-  description: Minimal OSS backend scaffold for the OpenReel app.
+  version: 0.2.0
+  description: OpenReel mobile adapter scaffold on top of PeerTube.
 servers:
   - url: http://localhost:8080
+
 paths:
   /healthz:
     get:
       operationId: healthz
       responses:
-        '200':
+        "200":
           description: Service health
+
+  /v1/auth/login:
+    post:
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: PeerTube-backed login success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
   /v1/feed:
     get:
       operationId: getFeed
@@ -26,12 +45,13 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Feed page
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FeedResponse'
+                $ref: "#/components/schemas/FeedResponse"
+
   /v1/uploads/create:
     post:
       operationId: createUpload
@@ -40,16 +60,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateUploadRequest'
+              $ref: "#/components/schemas/CreateUploadRequest"
       responses:
-        '201':
-          description: Resumable upload session created
+        "201":
+          description: PeerTube-backed resumable upload session created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateUploadResponse'
+                $ref: "#/components/schemas/CreateUploadResponse"
+
 components:
   schemas:
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        provider:
+          type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+        scope:
+          type: string
+
     FeedResponse:
       type: object
       properties:
@@ -69,7 +114,8 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/FeedItem'
+            $ref: "#/components/schemas/FeedItem"
+
     FeedItem:
       type: object
       properties:
@@ -90,13 +136,14 @@ components:
           items:
             type: string
         creator:
-          $ref: '#/components/schemas/FeedCreator'
+          $ref: "#/components/schemas/FeedCreator"
         stats:
-          $ref: '#/components/schemas/FeedStats'
+          $ref: "#/components/schemas/FeedStats"
         reasons:
           type: array
           items:
-            $ref: '#/components/schemas/ReasonLabel'
+            $ref: "#/components/schemas/ReasonLabel"
+
     FeedCreator:
       type: object
       properties:
@@ -108,6 +155,7 @@ components:
           type: string
         verified:
           type: boolean
+
     FeedStats:
       type: object
       properties:
@@ -119,6 +167,7 @@ components:
           type: integer
         saves:
           type: integer
+
     ReasonLabel:
       type: object
       properties:
@@ -126,6 +175,7 @@ components:
           type: string
         label:
           type: string
+
     CreateUploadRequest:
       type: object
       required: [file_name, size_bytes]
@@ -137,12 +187,15 @@ components:
         size_bytes:
           type: integer
           format: int64
+
     CreateUploadResponse:
       type: object
       properties:
         upload_id:
           type: string
         upload_url:
+          type: string
+        provider:
           type: string
         tus_headers:
           type: object

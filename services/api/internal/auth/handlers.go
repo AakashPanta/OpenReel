@@ -1,4 +1,4 @@
-package uploads
+package auth
 
 import (
 	"encoding/json"
@@ -15,8 +15,8 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func (h *Handler) CreateUpload(w http.ResponseWriter, r *http.Request) {
-	var req CreateUploadRequest
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		common.WriteJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "invalid json body",
@@ -24,14 +24,7 @@ func (h *Handler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.FileName == "" || req.SizeBytes <= 0 {
-		common.WriteJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "file_name and size_bytes are required",
-		})
-		return
-	}
-
-	resp, err := h.service.Create(r.Context(), req)
+	resp, err := h.service.Login(r.Context(), req)
 	if err != nil {
 		common.WriteJSON(w, http.StatusBadGateway, map[string]string{
 			"error": err.Error(),
@@ -39,5 +32,5 @@ func (h *Handler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSON(w, http.StatusCreated, resp)
+	common.WriteJSON(w, http.StatusOK, resp)
 }
