@@ -1,0 +1,1466 @@
+name: Apply PeerTube Adapter Scaffold
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure directories exist
+        shell: bash
+        run: |
+          mkdir -p services/api/cmd/server
+          mkdir -p services/api/internal/config
+          mkdir -p services/api/internal/peertube
+          mkdir -p services/api/internal/auth
+          mkdir -p services/api/internal/feed
+          mkdir -p services/api/internal/uploads
+          mkdir -p services/api/internal/httpx
+          mkdir -p services/api/openapi
+
+      - name: Write PeerTube adapter scaffold
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          files = {
+              "services/api/cmd/server/main.go": r'''package main
+
+          import (
+          	"context"
+          	"log"
+          	"net/http"
+          	"os/signal"
+          	"syscall"
+          	"time"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/auth"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/config"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/feed"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/httpx"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/peertube"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/uploads"
+          )
+
+          func main() {
+          	cfg := config.Load()
+
+          	peerTubeClient := peertube.NewClient(cfg)
+
+          	authService := auth.NewService(cfg, peerTubeClient)
+          	feedService := feed.NewService(cfg, peerTubeClient)
+          	uploadService := uploads.NewService(cfg, peerTubeClient)
+
+          	router := httpx.NewRouter(cfg, authService, feedService, uploadService)
+
+          	srv := &http.Server{
+          		Addr:              ":" + cfg.Port,
+          		Handler:           router,
+          		ReadHeaderTimeout: 10 * time.Second,
+          	}
+
+          	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+          	defer stop()
+
+          	go func() {
+          		log.Printf("openreel api listening on :%s", cfg.Port)
+          		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+          			log.Fatalf("server failed: %v", err)
+          		}
+          	}()
+
+          	<-ctx.Done()
+
+          	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+          	defer cancel()
+
+          	if err := srv.Shutdown(shutdownCtx); err != nil {
+          		log.Printf("shutdown error: %v", err)
+          	}
+          }
+          ''',
+
+              "services/api/internal/config/config.go": r'''package config
+
+          import "os"
+
+          type Config struct {
+          	AppEnv         string
+          	Port           string
+          	PublicBaseURL  string
+          	DatabaseURL    string
+          	ValkeyAddr     string
+          	NatsURL        string
+          	OpenSearchURL  string
+          	UmamiURL       string
+          	PeerTubeBaseURL string
+          	PeerTubeUsername string
+          	PeerTubePassword string
+          	PeerTubeChannelID string
+          	PeerTubeTokenScope string
+          }
+
+          func Load() Config {
+          	return Config{
+          		AppEnv:             env("APP_ENV", "development"),
+          		Port:               env("API_PORT", "8080"),
+          		PublicBaseURL:      env("PUBLIC_BASE_URL", "http://localhost:8080"),
+          		DatabaseURL:        env("DATABASE_URL", "postgres://openreel:openreel@postgres:5432/openreel?sslmode=disable"),
+          		ValkeyAddr:         env("VALKEY_ADDR", "valkey:6379"),
+          		NatsURL:            env("NATS_URL", "nats://nats:4222"),
+          		OpenSearchURL:      env("OPENSEARCH_URL", "http://opensearch:9200"),
+          		UmamiURL:           env("UMAMI_URL", "http://umami:3000"),
+          		PeerTubeBaseURL:    trimTrailingSlash(env("PEERTUBE_BASE_URL", "")),
+          		PeerTubeUsername:   env("PEERTUBE_USERNAME", ""),
+          		PeerTubePassword:   env("PEERTUBE_PASSWORD", ""),
+          		PeerTubeChannelID:  env("PEERTUBE_CHANNEL_ID", ""),
+          		PeerTubeTokenScope: env("PEERTUBE_TOKEN_SCOPE", "user"),
+          	}
+          }
+
+          func env(key, fallback string) string {
+          	value := os.Getenv(key)
+          	if value == "" {
+          		return fallback
+          	}
+          	return value
+          }
+
+          func trimTrailingSlash(value string) string {
+          	for len(value) > 0 && value[len(value)-1] == '/' {
+          		value = value[:len(value)-1]
+          	}
+          	return value
+          }
+          ''',
+
+              "services/api/internal/peertube/models.go": r'''package peertube
+
+          type LocalOAuthClient struct {
+          	ClientID     string `json:"client_id"`
+          	ClientSecret string `json:"client_secret"`
+          }
+
+          type TokenResponse struct {
+          	AccessToken  string `json:"access_token"`
+          	RefreshToken string `json:"refresh_token"`
+          	TokenType    string `json:"token_type"`
+          	ExpiresIn    int    `json:"expires_in"`
+          	Scope        string `json:"scope"`
+          }
+
+          type VideoListResponse struct {
+          	Total int           `json:"total"`
+          	Data  []VideoRecord `json:"data"`
+          }
+
+          type VideoRecord struct {
+          	ID          int            `json:"id"`
+          	UUID        string         `json:"uuid"`
+          	ShortUUID   string         `json:"shortUUID"`
+          	Name        string         `json:"name"`
+          	Description string         `json:"description"`
+          	Duration    int            `json:"duration"`
+          	Views       int            `json:"views"`
+          	Likes       int            `json:"likes"`
+          	Comments    int            `json:"comments"`
+          	NSFW        bool           `json:"nsfw"`
+          	PublishedAt string         `json:"publishedAt"`
+          	CreatedAt   string         `json:"createdAt"`
+          	UpdatedAt   string         `json:"updatedAt"`
+          	Channel     ChannelRecord  `json:"channel"`
+          	Account     AccountRecord  `json:"account"`
+          	Thumbnails  []ThumbnailRef `json:"thumbnails"`
+          	PreviewPath string         `json:"previewPath"`
+          }
+
+          type ChannelRecord struct {
+          	ID          int    `json:"id"`
+          	Name        string `json:"name"`
+          	DisplayName string `json:"displayName"`
+          }
+
+          type AccountRecord struct {
+          	ID          int    `json:"id"`
+          	Name        string `json:"name"`
+          	DisplayName string `json:"displayName"`
+          	Host        string `json:"host"`
+          }
+
+          type ThumbnailRef struct {
+          	Path string `json:"path"`
+          }
+
+          type SearchVideosParams struct {
+          	Start int
+          	Count int
+          	Sort  string
+          }
+
+          type InitResumableUploadRequest struct {
+          	ChannelID   int    `json:"channelId"`
+          	Filename    string `json:"filename"`
+          	Name        string `json:"name"`
+          	Description string `json:"description,omitempty"`
+          	Privacy     int    `json:"privacy,omitempty"`
+          }
+
+          type InitResumableUploadResponse struct {
+          	UploadID        string
+          	UploadURL       string
+          	HTTPStatus      int
+          	RawLocation     string
+          	PeerTubeVideoID int
+          	PeerTubeUUID    string
+          }
+          ''',
+
+              "services/api/internal/peertube/client.go": r'''package peertube
+
+          import (
+          	"bytes"
+          	"context"
+          	"encoding/json"
+          	"fmt"
+          	"io"
+          	"net/http"
+          	"net/url"
+          	"strconv"
+          	"strings"
+          	"time"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/config"
+          )
+
+          type Client struct {
+          	baseURL    string
+          	httpClient *http.Client
+          }
+
+          func NewClient(cfg config.Config) *Client {
+          	return &Client{
+          		baseURL: cfg.PeerTubeBaseURL,
+          		httpClient: &http.Client{
+          			Timeout: 20 * time.Second,
+          		},
+          	}
+          }
+
+          func (c *Client) Enabled() bool {
+          	return c != nil && c.baseURL != ""
+          }
+
+          func (c *Client) GetLocalOAuthClient(ctx context.Context) (LocalOAuthClient, error) {
+          	var out LocalOAuthClient
+          	if !c.Enabled() {
+          		return out, fmt.Errorf("peertube disabled")
+          	}
+
+          	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/oauth-clients/local", nil)
+          	if err != nil {
+          		return out, err
+          	}
+
+          	if err := c.doJSON(req, &out); err != nil {
+          		return out, err
+          	}
+
+          	return out, nil
+          }
+
+          func (c *Client) PasswordLogin(ctx context.Context, clientID, clientSecret, username, password, scope string) (TokenResponse, error) {
+          	var out TokenResponse
+          	if !c.Enabled() {
+          		return out, fmt.Errorf("peertube disabled")
+          	}
+
+          	form := url.Values{}
+          	form.Set("client_id", clientID)
+          	form.Set("client_secret", clientSecret)
+          	form.Set("grant_type", "password")
+          	form.Set("response_type", "code")
+          	form.Set("username", username)
+          	form.Set("password", password)
+          	if scope != "" {
+          		form.Set("scope", scope)
+          	}
+
+          	req, err := http.NewRequestWithContext(
+          		ctx,
+          		http.MethodPost,
+          		c.baseURL+"/api/v1/users/token",
+          		strings.NewReader(form.Encode()),
+          	)
+          	if err != nil {
+          		return out, err
+          	}
+
+          	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+          	if err := c.doJSON(req, &out); err != nil {
+          		return out, err
+          	}
+
+          	return out, nil
+          }
+
+          func (c *Client) SearchVideos(ctx context.Context, accessToken string, params SearchVideosParams) (VideoListResponse, error) {
+          	var out VideoListResponse
+          	if !c.Enabled() {
+          		return out, fmt.Errorf("peertube disabled")
+          	}
+
+          	values := url.Values{}
+          	values.Set("start", strconv.Itoa(params.Start))
+          	values.Set("count", strconv.Itoa(params.Count))
+          	if params.Sort != "" {
+          		values.Set("sort", params.Sort)
+          	}
+          	values.Set("hasHLSFiles", "true")
+
+          	req, err := http.NewRequestWithContext(
+          		ctx,
+          		http.MethodGet,
+          		c.baseURL+"/api/v1/search/videos?"+values.Encode(),
+          		nil,
+          	)
+          	if err != nil {
+          		return out, err
+          	}
+
+          	if accessToken != "" {
+          		req.Header.Set("Authorization", "Bearer "+accessToken)
+          	}
+
+          	if err := c.doJSON(req, &out); err != nil {
+          		return out, err
+          	}
+
+          	return out, nil
+          }
+
+          func (c *Client) SubscriptionVideos(ctx context.Context, accessToken string, start, count int) (VideoListResponse, error) {
+          	var out VideoListResponse
+          	if !c.Enabled() {
+          		return out, fmt.Errorf("peertube disabled")
+          	}
+
+          	values := url.Values{}
+          	values.Set("start", strconv.Itoa(start))
+          	values.Set("count", strconv.Itoa(count))
+          	values.Set("hasHLSFiles", "true")
+
+          	req, err := http.NewRequestWithContext(
+          		ctx,
+          		http.MethodGet,
+          		c.baseURL+"/api/v1/users/me/subscriptions/videos?"+values.Encode(),
+          		nil,
+          	)
+          	if err != nil {
+          		return out, err
+          	}
+
+          	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+          	if err := c.doJSON(req, &out); err != nil {
+          		return out, err
+          	}
+
+          	return out, nil
+          }
+
+          func (c *Client) InitializeResumableUpload(ctx context.Context, accessToken string, fileSize int64, contentType string, payload InitResumableUploadRequest) (InitResumableUploadResponse, error) {
+          	var out InitResumableUploadResponse
+          	if !c.Enabled() {
+          		return out, fmt.Errorf("peertube disabled")
+          	}
+
+          	body, err := json.Marshal(payload)
+          	if err != nil {
+          		return out, err
+          	}
+
+          	req, err := http.NewRequestWithContext(
+          		ctx,
+          		http.MethodPost,
+          		c.baseURL+"/api/v1/videos/upload-resumable",
+          		bytes.NewReader(body),
+          	)
+          	if err != nil {
+          		return out, err
+          	}
+
+          	req.Header.Set("Authorization", "Bearer "+accessToken)
+          	req.Header.Set("Content-Type", "application/json")
+          	req.Header.Set("X-Upload-Content-Length", strconv.FormatInt(fileSize, 10))
+          	req.Header.Set("X-Upload-Content-Type", contentType)
+
+          	resp, err := c.httpClient.Do(req)
+          	if err != nil {
+          		return out, err
+          	}
+          	defer resp.Body.Close()
+
+          	out.HTTPStatus = resp.StatusCode
+          	out.RawLocation = resp.Header.Get("Location")
+
+          	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+          		data, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
+          		return out, fmt.Errorf("peertube resumable init failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(data)))
+          	}
+
+          	if out.RawLocation != "" {
+          		if parsed, err := url.Parse(out.RawLocation); err == nil {
+          			out.UploadID = parsed.Query().Get("upload_id")
+          		}
+          	}
+
+          	var maybeBody struct {
+          		Video struct {
+          			ID        int    `json:"id"`
+          			UUID      string `json:"uuid"`
+          			ShortUUID string `json:"shortUUID"`
+          		} `json:"video"`
+          	}
+
+          	rawBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+          	if len(rawBody) > 0 {
+          		_ = json.Unmarshal(rawBody, &maybeBody)
+          		out.PeerTubeVideoID = maybeBody.Video.ID
+          		out.PeerTubeUUID = maybeBody.Video.UUID
+          	}
+
+          	if out.UploadID != "" {
+          		out.UploadURL = fmt.Sprintf("%s/api/v1/videos/upload-resumable?upload_id=%s", c.baseURL, url.QueryEscape(out.UploadID))
+          	} else {
+          		out.UploadURL = c.baseURL + "/api/v1/videos/upload-resumable"
+          	}
+
+          	return out, nil
+          }
+
+          func (c *Client) doJSON(req *http.Request, out any) error {
+          	resp, err := c.httpClient.Do(req)
+          	if err != nil {
+          		return err
+          	}
+          	defer resp.Body.Close()
+
+          	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+          		data, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
+          		return fmt.Errorf("peertube request failed: method=%s path=%s status=%d body=%s",
+          			req.Method,
+          			req.URL.Path,
+          			resp.StatusCode,
+          			strings.TrimSpace(string(data)),
+          		)
+          	}
+
+          	if out == nil {
+          		return nil
+          	}
+
+          	return json.NewDecoder(resp.Body).Decode(out)
+          }
+          ''',
+
+              "services/api/internal/auth/service.go": r'''package auth
+
+          import (
+          	"context"
+          	"fmt"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/config"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/peertube"
+          )
+
+          type Service struct {
+          	cfg      config.Config
+          	peerTube *peertube.Client
+          }
+
+          type LoginRequest struct {
+          	Username string `json:"username"`
+          	Password string `json:"password"`
+          }
+
+          type LoginResponse struct {
+          	Provider     string `json:"provider"`
+          	AccessToken  string `json:"access_token"`
+          	RefreshToken string `json:"refresh_token"`
+          	TokenType    string `json:"token_type"`
+          	ExpiresIn    int    `json:"expires_in"`
+          	Scope        string `json:"scope"`
+          }
+
+          func NewService(cfg config.Config, peerTube *peertube.Client) *Service {
+          	return &Service{
+          		cfg:      cfg,
+          		peerTube: peerTube,
+          	}
+          }
+
+          func (s *Service) Login(ctx context.Context, req LoginRequest) (LoginResponse, error) {
+          	if !s.peerTube.Enabled() {
+          		return LoginResponse{}, fmt.Errorf("peertube is not configured")
+          	}
+
+          	username := req.Username
+          	if username == "" {
+          		username = s.cfg.PeerTubeUsername
+          	}
+
+          	password := req.Password
+          	if password == "" {
+          		password = s.cfg.PeerTubePassword
+          	}
+
+          	if username == "" || password == "" {
+          		return LoginResponse{}, fmt.Errorf("username and password are required")
+          	}
+
+          	client, err := s.peerTube.GetLocalOAuthClient(ctx)
+          	if err != nil {
+          		return LoginResponse{}, err
+          	}
+
+          	token, err := s.peerTube.PasswordLogin(
+          		ctx,
+          		client.ClientID,
+          		client.ClientSecret,
+          		username,
+          		password,
+          		s.cfg.PeerTubeTokenScope,
+          	)
+          	if err != nil {
+          		return LoginResponse{}, err
+          	}
+
+          	return LoginResponse{
+          		Provider:     "peertube",
+          		AccessToken:  token.AccessToken,
+          		RefreshToken: token.RefreshToken,
+          		TokenType:    token.TokenType,
+          		ExpiresIn:    token.ExpiresIn,
+          		Scope:        token.Scope,
+          	}, nil
+          }
+          ''',
+
+              "services/api/internal/auth/handlers.go": r'''package auth
+
+          import (
+          	"encoding/json"
+          	"net/http"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/common"
+          )
+
+          type Handler struct {
+          	service *Service
+          }
+
+          func NewHandler(service *Service) *Handler {
+          	return &Handler{service: service}
+          }
+
+          func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+          	var req LoginRequest
+          	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+          		common.WriteJSON(w, http.StatusBadRequest, map[string]string{
+          			"error": "invalid json body",
+          		})
+          		return
+          	}
+
+          	resp, err := h.service.Login(r.Context(), req)
+          	if err != nil {
+          		common.WriteJSON(w, http.StatusBadGateway, map[string]string{
+          			"error": err.Error(),
+          		})
+          		return
+          	}
+
+          	common.WriteJSON(w, http.StatusOK, resp)
+          }
+          ''',
+
+              "services/api/internal/feed/service.go": r'''package feed
+
+          import (
+          	"context"
+          	"fmt"
+          	"strconv"
+          	"strings"
+          	"time"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/config"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/peertube"
+          )
+
+          type Service struct {
+          	cfg      config.Config
+          	peerTube *peertube.Client
+          }
+
+          type FeedResponse struct {
+          	Tab         string        `json:"tab"`
+          	Cursor      string        `json:"cursor,omitempty"`
+          	NextCursor  string        `json:"next_cursor,omitempty"`
+          	Items       []FeedItem    `json:"items"`
+          	Explanation []string      `json:"explanation"`
+          	GeneratedAt time.Time     `json:"generated_at"`
+          }
+
+          type FeedItem struct {
+          	ID          string        `json:"id"`
+          	Title       string        `json:"title"`
+          	Caption     string        `json:"caption"`
+          	PlaybackURL string        `json:"playback_url"`
+          	Thumbnail   string        `json:"thumbnail_url"`
+          	DurationSec int           `json:"duration_sec"`
+          	Tags        []string      `json:"tags"`
+          	Creator     FeedCreator   `json:"creator"`
+          	Stats       FeedStats     `json:"stats"`
+          	Reasons     []ReasonLabel `json:"reasons"`
+          }
+
+          type FeedCreator struct {
+          	ID          string `json:"id"`
+          	DisplayName string `json:"display_name"`
+          	Handle      string `json:"handle"`
+          	Verified    bool   `json:"verified"`
+          }
+
+          type FeedStats struct {
+          	Likes    int `json:"likes"`
+          	Comments int `json:"comments"`
+          	Shares   int `json:"shares"`
+          	Saves    int `json:"saves"`
+          }
+
+          type ReasonLabel struct {
+          	Code  string `json:"code"`
+          	Label string `json:"label"`
+          }
+
+          func NewService(cfg config.Config, peerTube *peertube.Client) *Service {
+          	return &Service{
+          		cfg:      cfg,
+          		peerTube: peerTube,
+          	}
+          }
+
+          func (s *Service) Get(ctx context.Context, tab, cursor string) (FeedResponse, error) {
+          	if tab == "" {
+          		tab = "for_you"
+          	}
+
+          	start := 0
+          	if cursor != "" {
+          		if parsed, err := strconv.Atoi(cursor); err == nil && parsed >= 0 {
+          			start = parsed
+          		}
+          	}
+
+          	if !s.peerTube.Enabled() || s.cfg.PeerTubeUsername == "" || s.cfg.PeerTubePassword == "" {
+          		return s.mockFeed(tab, cursor), nil
+          	}
+
+          	token, err := s.login(ctx)
+          	if err != nil {
+          		return s.mockFeed(tab, cursor), nil
+          	}
+
+          	var videos peertube.VideoListResponse
+
+          	switch tab {
+          	case "following":
+          		videos, err = s.peerTube.SubscriptionVideos(ctx, token.AccessToken, start, 10)
+          	default:
+          		videos, err = s.peerTube.SearchVideos(ctx, token.AccessToken, peertube.SearchVideosParams{
+          			Start: start,
+          			Count: 10,
+          			Sort:  "-trending",
+          		})
+          	}
+
+          	if err != nil {
+          		return s.mockFeed(tab, cursor), nil
+          	}
+
+          	items := make([]FeedItem, 0, len(videos.Data))
+          	for _, video := range videos.Data {
+          		items = append(items, mapVideoToFeedItem(s.cfg.PeerTubeBaseURL, tab, video))
+          	}
+
+          	nextCursor := ""
+          	if len(videos.Data) > 0 && (start+len(videos.Data)) < videos.Total {
+          		nextCursor = strconv.Itoa(start + len(videos.Data))
+          	}
+
+          	explanation := []string{
+          		"PeerTube-backed feed adapter",
+          		"OpenReel is shaping the mobile payload on top of PeerTube",
+          	}
+
+          	if tab == "following" {
+          		explanation = append(explanation, "Following tab is sourced from PeerTube subscription videos")
+          	} else {
+          		explanation = append(explanation, "For You is currently candidate-backed by PeerTube search/trending")
+          	}
+
+          	return FeedResponse{
+          		Tab:         tab,
+          		Cursor:      cursor,
+          		NextCursor:  nextCursor,
+          		Items:       items,
+          		Explanation: explanation,
+          		GeneratedAt: time.Now().UTC(),
+          	}, nil
+          }
+
+          func (s *Service) login(ctx context.Context) (peertube.TokenResponse, error) {
+          	client, err := s.peerTube.GetLocalOAuthClient(ctx)
+          	if err != nil {
+          		return peertube.TokenResponse{}, err
+          	}
+
+          	return s.peerTube.PasswordLogin(
+          		ctx,
+          		client.ClientID,
+          		client.ClientSecret,
+          		s.cfg.PeerTubeUsername,
+          		s.cfg.PeerTubePassword,
+          		s.cfg.PeerTubeTokenScope,
+          	)
+          }
+
+          func mapVideoToFeedItem(baseURL, tab string, video peertube.VideoRecord) FeedItem {
+          	videoID := video.UUID
+          	if videoID == "" {
+          		videoID = video.ShortUUID
+          	}
+          	if videoID == "" {
+          		videoID = strconv.Itoa(video.ID)
+          	}
+
+          	title := strings.TrimSpace(video.Name)
+          	if title == "" {
+          		title = "Untitled video"
+          	}
+
+          	caption := strings.TrimSpace(video.Description)
+          	if caption == "" {
+          		caption = "Imported from PeerTube through the OpenReel adapter."
+          	}
+
+          	thumbnailURL := ""
+          	if len(video.Thumbnails) > 0 && video.Thumbnails[0].Path != "" {
+          		if strings.HasPrefix(video.Thumbnails[0].Path, "http://") || strings.HasPrefix(video.Thumbnails[0].Path, "https://") {
+          			thumbnailURL = video.Thumbnails[0].Path
+          		} else {
+          			thumbnailURL = strings.TrimRight(baseURL, "/") + video.Thumbnails[0].Path
+          		}
+          	} else if video.PreviewPath != "" {
+          		if strings.HasPrefix(video.PreviewPath, "http://") || strings.HasPrefix(video.PreviewPath, "https://") {
+          			thumbnailURL = video.PreviewPath
+          		} else {
+          			thumbnailURL = strings.TrimRight(baseURL, "/") + video.PreviewPath
+          		}
+          	}
+
+          	creatorHandle := video.Channel.Name
+          	if creatorHandle == "" {
+          		creatorHandle = video.Account.Name
+          	}
+          	if creatorHandle == "" {
+          		creatorHandle = "creator"
+          	}
+          	if !strings.HasPrefix(creatorHandle, "@") {
+          		creatorHandle = "@" + creatorHandle
+          	}
+
+          	creatorName := video.Channel.DisplayName
+          	if creatorName == "" {
+          		creatorName = video.Account.DisplayName
+          	}
+          	if creatorName == "" {
+          		creatorName = creatorHandle
+          	}
+
+          	reasons := []ReasonLabel{
+          		{Code: "peertube_source", Label: "Fetched from PeerTube"},
+          		}
+
+          	if tab == "following" {
+          		reasons = append(reasons, ReasonLabel{Code: "subscription_graph", Label: "From your subscriptions"})
+          	} else {
+          		reasons = append(reasons, ReasonLabel{Code: "candidate_pool", Label: "From search/trending candidates"})
+          	}
+
+          	playbackURL := fmt.Sprintf("https://cdn.openreel.local/videos/%s/master.m3u8", videoID)
+
+          	return FeedItem{
+          		ID:          videoID,
+          		Title:       title,
+          		Caption:     caption,
+          		PlaybackURL: playbackURL,
+          		Thumbnail:   thumbnailURL,
+          		DurationSec: video.Duration,
+          		Tags:        inferTags(title, caption),
+          		Creator: FeedCreator{
+          			ID:          strconv.Itoa(video.Channel.ID),
+          			DisplayName: creatorName,
+          			Handle:      creatorHandle,
+          			Verified:    false,
+          		},
+          		Stats: FeedStats{
+          			Likes:    video.Likes,
+          			Comments: video.Comments,
+          			Shares:   0,
+          			Saves:    0,
+          		},
+          		Reasons: reasons,
+          	}
+          }
+
+          func inferTags(title, caption string) []string {
+          	text := strings.ToLower(title + " " + caption)
+          	tags := make([]string, 0, 3)
+
+          	appendIfContains := func(code, needle string) {
+          		if strings.Contains(text, needle) && len(tags) < 3 {
+          			tags = append(tags, code)
+          		}
+          	}
+
+          	appendIfContains("opensource", "open")
+          	appendIfContains("video", "video")
+          	appendIfContains("mobile", "mobile")
+          	appendIfContains("android", "android")
+          	appendIfContains("design", "design")
+          	appendIfContains("creator", "creator")
+
+          	if len(tags) == 0 {
+          		tags = []string{"peertube", "openreel", "video"}
+          	}
+
+          	return tags
+          }
+
+          func (s *Service) mockFeed(tab, cursor string) FeedResponse {
+          	return FeedResponse{
+          		Tab:         tab,
+          		Cursor:      cursor,
+          		NextCursor:  "10",
+          		GeneratedAt: time.Now().UTC(),
+          		Explanation: []string{
+          			"Transparent scoring scaffold",
+          			"PeerTube is not configured yet, so this response is mock-backed",
+          			"Set PEERTUBE_BASE_URL, PEERTUBE_USERNAME, PEERTUBE_PASSWORD, and PEERTUBE_CHANNEL_ID to enable the adapter",
+          		},
+          		Items: []FeedItem{
+          			{
+          				ID:          "vid_001",
+          				Title:       "Transparent feed ranking for short videos",
+          				Caption:     "OpenReel scores reels using recency, completion, affinity, and topic match with operator-visible weights.",
+          				PlaybackURL: "https://cdn.openreel.local/videos/vid_001/master.m3u8",
+          				Thumbnail:   "https://cdn.openreel.local/videos/vid_001/thumb.jpg",
+          				DurationSec: 38,
+          				Tags:        []string{"opensource", "ranking", "productdesign"},
+          				Creator: FeedCreator{
+          					ID:          "creator_001",
+          					DisplayName: "Nova Studio",
+          					Handle:      "@novastudio",
+          					Verified:    true,
+          				},
+          				Stats: FeedStats{Likes: 42800, Comments: 2100, Shares: 840, Saves: 5400},
+          				Reasons: []ReasonLabel{
+          					{Code: "follow_affinity", Label: "Strong creator affinity"},
+          					{Code: "topic_match", Label: "Matches your interest tags"},
+          					{Code: "completion_rate", Label: "High completion in similar viewers"},
+          				},
+          			},
+          			{
+          				ID:          "vid_002",
+          				Title:       "Compose motion patterns for reel products",
+          				Caption:     "Mobile-first motion is about clarity, rhythm, and scroll confidence.",
+          				PlaybackURL: "https://cdn.openreel.local/videos/vid_002/master.m3u8",
+          				Thumbnail:   "https://cdn.openreel.local/videos/vid_002/thumb.jpg",
+          				DurationSec: 24,
+          				Tags:        []string{"compose", "ux", "motion"},
+          				Creator: FeedCreator{
+          					ID:          "creator_002",
+          					DisplayName: "Kai Motion",
+          					Handle:      "@kaimotion",
+          					Verified:    true,
+          				},
+          				Stats: FeedStats{Likes: 18300, Comments: 664, Shares: 310, Saves: 2000},
+          				Reasons: []ReasonLabel{
+          					{Code: "recency", Label: "Fresh upload"},
+          					{Code: "engagement", Label: "Trending in your topic cluster"},
+          				},
+          			},
+          		},
+          	}
+          }
+          ''',
+
+              "services/api/internal/feed/handlers.go": r'''package feed
+
+          import (
+          	"net/http"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/common"
+          )
+
+          type Handler struct {
+          	service *Service
+          }
+
+          func NewHandler(service *Service) *Handler {
+          	return &Handler{service: service}
+          }
+
+          func (h *Handler) GetFeed(w http.ResponseWriter, r *http.Request) {
+          	resp, err := h.service.Get(
+          		r.Context(),
+          		r.URL.Query().Get("tab"),
+          		r.URL.Query().Get("cursor"),
+          	)
+          	if err != nil {
+          		common.WriteJSON(w, http.StatusBadGateway, map[string]string{
+          			"error": err.Error(),
+          		})
+          		return
+          	}
+
+          	common.WriteJSON(w, http.StatusOK, resp)
+          }
+          ''',
+
+              "services/api/internal/uploads/service.go": r'''package uploads
+
+          import (
+          	"context"
+          	"fmt"
+          	"strconv"
+          	"strings"
+          	"time"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/config"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/peertube"
+          	"github.com/google/uuid"
+          )
+
+          type Service struct {
+          	cfg      config.Config
+          	peerTube *peertube.Client
+          }
+
+          type CreateUploadRequest struct {
+          	FileName    string `json:"file_name"`
+          	ContentType string `json:"content_type"`
+          	SizeBytes   int64  `json:"size_bytes"`
+          }
+
+          type CreateUploadResponse struct {
+          	UploadID          string            `json:"upload_id"`
+          	UploadURL         string            `json:"upload_url"`
+          	TusHeaders        map[string]string `json:"tus_headers"`
+          	DraftVideoID      string            `json:"draft_video_id"`
+          	Status            string            `json:"status"`
+          	ExpiresAt         time.Time         `json:"expires_at"`
+          	ProcessingWebhook string            `json:"processing_webhook"`
+          	Provider          string            `json:"provider"`
+          }
+
+          func NewService(cfg config.Config, peerTube *peertube.Client) *Service {
+          	return &Service{
+          		cfg:      cfg,
+          		peerTube: peerTube,
+          	}
+          }
+
+          func (s *Service) Create(ctx context.Context, req CreateUploadRequest) (CreateUploadResponse, error) {
+          	if !s.peerTube.Enabled() || s.cfg.PeerTubeUsername == "" || s.cfg.PeerTubePassword == "" || s.cfg.PeerTubeChannelID == "" {
+          		return s.mockCreate(req), nil
+          	}
+
+          	channelID, err := strconv.Atoi(s.cfg.PeerTubeChannelID)
+          	if err != nil {
+          		return CreateUploadResponse{}, fmt.Errorf("invalid PEERTUBE_CHANNEL_ID: %w", err)
+          	}
+
+          	token, err := s.login(ctx)
+          	if err != nil {
+          		return CreateUploadResponse{}, err
+          	}
+
+          	title := titleFromFilename(req.FileName)
+
+          	initResp, err := s.peerTube.InitializeResumableUpload(
+          		ctx,
+          		token.AccessToken,
+          		req.SizeBytes,
+          		req.ContentType,
+          		peertube.InitResumableUploadRequest{
+          			ChannelID: channelID,
+          			Filename:  req.FileName,
+          			Name:      title,
+          			Privacy:   1,
+          		},
+          	)
+          	if err != nil {
+          		return CreateUploadResponse{}, err
+          	}
+
+          	uploadID := initResp.UploadID
+          	if uploadID == "" {
+          		uploadID = uuid.NewString()
+          	}
+
+          	draftID := "peertube_draft_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+
+          	return CreateUploadResponse{
+          		UploadID:     uploadID,
+          		UploadURL:    initResp.UploadURL,
+          		DraftVideoID: draftID,
+          		Status:       "uploading",
+          		ExpiresAt:    time.Now().UTC().Add(1 * time.Hour),
+          		TusHeaders: map[string]string{
+          			"Authorization":          "Bearer " + token.AccessToken,
+          			"X-Upload-Content-Length": fmt.Sprintf("%d", req.SizeBytes),
+          			"X-Upload-Content-Type":   req.ContentType,
+          			"Content-Type":            "application/octet-stream",
+          		},
+          		ProcessingWebhook: fmt.Sprintf("%s/internal/uploads/%s/complete", strings.TrimRight(s.cfg.PublicBaseURL, "/"), uploadID),
+          		Provider:          "peertube",
+          	}, nil
+          }
+
+          func (s *Service) login(ctx context.Context) (peertube.TokenResponse, error) {
+          	client, err := s.peerTube.GetLocalOAuthClient(ctx)
+          	if err != nil {
+          		return peertube.TokenResponse{}, err
+          	}
+
+          	return s.peerTube.PasswordLogin(
+          		ctx,
+          		client.ClientID,
+          		client.ClientSecret,
+          		s.cfg.PeerTubeUsername,
+          		s.cfg.PeerTubePassword,
+          		s.cfg.PeerTubeTokenScope,
+          	)
+          }
+
+          func (s *Service) mockCreate(req CreateUploadRequest) CreateUploadResponse {
+          	uploadID := uuid.NewString()
+          	draftID := "draft_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+
+          	return CreateUploadResponse{
+          		UploadID:     uploadID,
+          		UploadURL:    fmt.Sprintf("%s/api/v1/videos/upload-resumable?upload_id=%s", "https://peertube.local", uploadID),
+          		DraftVideoID: draftID,
+          		Status:       "uploading",
+          		ExpiresAt:    time.Now().UTC().Add(24 * time.Hour),
+          		TusHeaders: map[string]string{
+          			"Content-Type":            "application/octet-stream",
+          			"X-Upload-Content-Length": fmt.Sprintf("%d", req.SizeBytes),
+          			"X-Upload-Content-Type":   req.ContentType,
+          		},
+          		ProcessingWebhook: fmt.Sprintf("%s/internal/uploads/%s/complete", strings.TrimRight(s.cfg.PublicBaseURL, "/"), uploadID),
+          		Provider:          "mock",
+          	}
+          }
+
+          func titleFromFilename(filename string) string {
+          	name := filename
+          	if dot := strings.LastIndexByte(name, '.'); dot > 0 {
+          		name = name[:dot]
+          	}
+          	name = strings.ReplaceAll(name, "-", " ")
+          	name = strings.ReplaceAll(name, "_", " ")
+          	name = strings.TrimSpace(name)
+          	if name == "" {
+          		return "OpenReel upload"
+          	}
+          	return name
+          }
+          ''',
+
+              "services/api/internal/uploads/handlers.go": r'''package uploads
+
+          import (
+          	"encoding/json"
+          	"net/http"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/common"
+          )
+
+          type Handler struct {
+          	service *Service
+          }
+
+          func NewHandler(service *Service) *Handler {
+          	return &Handler{service: service}
+          }
+
+          func (h *Handler) CreateUpload(w http.ResponseWriter, r *http.Request) {
+          	var req CreateUploadRequest
+          	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+          		common.WriteJSON(w, http.StatusBadRequest, map[string]string{
+          			"error": "invalid json body",
+          		})
+          		return
+          	}
+
+          	if req.FileName == "" || req.SizeBytes <= 0 {
+          		common.WriteJSON(w, http.StatusBadRequest, map[string]string{
+          			"error": "file_name and size_bytes are required",
+          		})
+          		return
+          	}
+
+          	resp, err := h.service.Create(r.Context(), req)
+          	if err != nil {
+          		common.WriteJSON(w, http.StatusBadGateway, map[string]string{
+          			"error": err.Error(),
+          		})
+          		return
+          	}
+
+          	common.WriteJSON(w, http.StatusCreated, resp)
+          }
+          ''',
+
+              "services/api/internal/httpx/router.go": r'''package httpx
+
+          import (
+          	"net/http"
+          	"time"
+
+          	"github.com/AakashPanta/OpenReel/services/api/internal/auth"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/common"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/config"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/feed"
+          	"github.com/AakashPanta/OpenReel/services/api/internal/uploads"
+          	"github.com/go-chi/chi/v5"
+          	"github.com/go-chi/chi/v5/middleware"
+          )
+
+          func NewRouter(
+          	cfg config.Config,
+          	authService *auth.Service,
+          	feedService *feed.Service,
+          	uploadService *uploads.Service,
+          ) http.Handler {
+          	r := chi.NewRouter()
+          	r.Use(middleware.RequestID)
+          	r.Use(middleware.RealIP)
+          	r.Use(middleware.Recoverer)
+          	r.Use(middleware.Timeout(30 * time.Second))
+
+          	authHandler := auth.NewHandler(authService)
+          	feedHandler := feed.NewHandler(feedService)
+          	uploadHandler := uploads.NewHandler(uploadService)
+
+          	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+          		common.WriteJSON(w, http.StatusOK, map[string]any{
+          			"status":   "ok",
+          			"service":  "openreel-api",
+          			"env":      cfg.AppEnv,
+          			"peertube": cfg.PeerTubeBaseURL != "",
+          		})
+          	})
+
+          	r.Route("/v1", func(r chi.Router) {
+          		r.Post("/auth/login", authHandler.Login)
+          		r.Get("/feed", feedHandler.GetFeed)
+          		r.Post("/uploads/create", uploadHandler.CreateUpload)
+          	})
+
+          	return r
+          }
+          ''',
+
+              "services/api/openapi/openreel-api.yaml": r'''openapi: 3.1.0
+          info:
+            title: OpenReel API
+            version: 0.2.0
+            description: OpenReel mobile adapter scaffold on top of PeerTube.
+          servers:
+            - url: http://localhost:8080
+
+          paths:
+            /healthz:
+              get:
+                operationId: healthz
+                responses:
+                  "200":
+                    description: Service health
+
+            /v1/auth/login:
+              post:
+                operationId: login
+                requestBody:
+                  required: true
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/LoginRequest"
+                responses:
+                  "200":
+                    description: PeerTube-backed login success
+                    content:
+                      application/json:
+                        schema:
+                          $ref: "#/components/schemas/LoginResponse"
+
+            /v1/feed:
+              get:
+                operationId: getFeed
+                parameters:
+                  - in: query
+                    name: tab
+                    schema:
+                      type: string
+                      enum: [for_you, following]
+                  - in: query
+                    name: cursor
+                    schema:
+                      type: string
+                responses:
+                  "200":
+                    description: Feed page
+                    content:
+                      application/json:
+                        schema:
+                          $ref: "#/components/schemas/FeedResponse"
+
+            /v1/uploads/create:
+              post:
+                operationId: createUpload
+                requestBody:
+                  required: true
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/CreateUploadRequest"
+                responses:
+                  "201":
+                    description: PeerTube-backed resumable upload session created
+                    content:
+                      application/json:
+                        schema:
+                          $ref: "#/components/schemas/CreateUploadResponse"
+
+          components:
+            schemas:
+              LoginRequest:
+                type: object
+                properties:
+                  username:
+                    type: string
+                  password:
+                    type: string
+
+              LoginResponse:
+                type: object
+                properties:
+                  provider:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+                  scope:
+                    type: string
+
+              FeedResponse:
+                type: object
+                properties:
+                  tab:
+                    type: string
+                  cursor:
+                    type: string
+                  next_cursor:
+                    type: string
+                  generated_at:
+                    type: string
+                    format: date-time
+                  explanation:
+                    type: array
+                    items:
+                      type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FeedItem"
+
+              FeedItem:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  caption:
+                    type: string
+                  playback_url:
+                    type: string
+                  thumbnail_url:
+                    type: string
+                  duration_sec:
+                    type: integer
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  creator:
+                    $ref: "#/components/schemas/FeedCreator"
+                  stats:
+                    $ref: "#/components/schemas/FeedStats"
+                  reasons:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReasonLabel"
+
+              FeedCreator:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  display_name:
+                    type: string
+                  handle:
+                    type: string
+                  verified:
+                    type: boolean
+
+              FeedStats:
+                type: object
+                properties:
+                  likes:
+                    type: integer
+                  comments:
+                    type: integer
+                  shares:
+                    type: integer
+                  saves:
+                    type: integer
+
+              ReasonLabel:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  label:
+                    type: string
+
+              CreateUploadRequest:
+                type: object
+                required: [file_name, size_bytes]
+                properties:
+                  file_name:
+                    type: string
+                  content_type:
+                    type: string
+                  size_bytes:
+                    type: integer
+                    format: int64
+
+              CreateUploadResponse:
+                type: object
+                properties:
+                  upload_id:
+                    type: string
+                  upload_url:
+                    type: string
+                  provider:
+                    type: string
+                  tus_headers:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  draft_video_id:
+                    type: string
+                  status:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+                  processing_webhook:
+                    type: string
+          ''',
+          }
+
+          for path_str, content in files.items():
+              path = Path(path_str)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content.strip() + "\n", encoding="utf-8")
+
+          env_path = Path(".env.example")
+          env_text = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+          additions = [
+              "PEERTUBE_BASE_URL=http://localhost:9000",
+              "PEERTUBE_USERNAME=",
+              "PEERTUBE_PASSWORD=",
+              "PEERTUBE_CHANNEL_ID=",
+              "PEERTUBE_TOKEN_SCOPE=user",
+          ]
+          for line in additions:
+              if line not in env_text:
+                  if env_text and not env_text.endswith("\n"):
+                      env_text += "\n"
+                  env_text += line + "\n"
+          env_path.write_text(env_text, encoding="utf-8")
+
+          print("PeerTube adapter scaffold written successfully.")
+          PY
+
+      - name: Show changed files
+        run: git status --short
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add services/api/cmd/server/main.go \
+                  services/api/internal/config/config.go \
+                  services/api/internal/peertube/models.go \
+                  services/api/internal/peertube/client.go \
+                  services/api/internal/auth/service.go \
+                  services/api/internal/auth/handlers.go \
+                  services/api/internal/feed/service.go \
+                  services/api/internal/feed/handlers.go \
+                  services/api/internal/uploads/service.go \
+                  services/api/internal/uploads/handlers.go \
+                  services/api/internal/httpx/router.go \
+                  services/api/openapi/openreel-api.yaml \
+                  .env.example
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Apply PeerTube adapter scaffold"
+          git push
