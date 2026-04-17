@@ -37,6 +37,63 @@ jobs:
             https://raw.githubusercontent.com/Chocobozzz/PeerTube/master/support/nginx/peertube \
             -o "$BASE_DIR/docker-volume/nginx/peertube"
 
+      - name: Apply OpenReel defaults to PeerTube .env
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          env_path = Path("infra/docker/peertube/.env")
+          text = env_path.read_text(encoding="utf-8")
+
+          replacements = {
+              "<MY POSTGRES USERNAME>": "peertube",
+              "<MY POSTGRES PASSWORD>": "YOUR_DB_PASSWORD",
+              "<MY DOMAIN>": "openreel.duckdns.org",
+              "<MY EMAIL ADDRESS>": "kimyuri466@gmail.com",
+              "<MY PEERTUBE SECRET>": "YOUR_PEERTUBE_SECRET",
+          }
+
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+
+          if "PT_INITIAL_ROOT_PASSWORD=" not in text:
+              if not text.endswith("\n"):
+                  text += "\n"
+              text += "PT_INITIAL_ROOT_PASSWORD=YOUR_ROOT_PASSWORD\n"
+
+          env_path.write_text(text, encoding="utf-8")
+          print("PeerTube .env updated with OpenReel defaults.")
+          PY
+
+      - name: Add gitignore rules for local secret overrides
+        shell: bash
+        run: |
+          touch .gitignore
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path(".gitignore")
+          text = path.read_text(encoding="utf-8")
+
+          lines_to_add = [
+              "infra/docker/peertube/.env.local",
+              "infra/docker/peertube/.env.runtime",
+          ]
+
+          if text and not text.endswith("\n"):
+              text += "\n"
+
+          existing = set(text.splitlines())
+          for line in lines_to_add:
+              if line not in existing:
+                  text += line + "\n"
+
+          path.write_text(text, encoding="utf-8")
+          print(".gitignore updated.")
+          PY
+
       - name: Write OpenReel PeerTube notes
         shell: bash
         run: |
@@ -45,30 +102,49 @@ jobs:
 
           This directory vendors the official PeerTube Docker production stack into the OpenReel repo.
 
+          ## OpenReel defaults already applied
+          - Hostname: openreel.duckdns.org
+          - Admin email: kimyuri466@gmail.com
+          - Postgres user: peertube
+
           ## Important
-          - Choose your final hostname carefully before first start.
-          - Edit `.env` before running the stack.
-          - This stack is intentionally separate from `infra/docker/docker-compose.yml` to avoid service collisions with the rest of OpenReel.
+          - The committed `.env` is a setup template.
+          - Replace these placeholder values before first start:
+            - `YOUR_DB_PASSWORD`
+            - `YOUR_PEERTUBE_SECRET`
+            - `YOUR_ROOT_PASSWORD`
+          - Do not commit real secrets to the public repo.
+          - Choose your hostname carefully before first start.
 
-          ## Required `.env` fields
-          Replace these placeholders in `infra/docker/peertube/.env`:
-          - <MY POSTGRES USERNAME>
-          - <MY POSTGRES PASSWORD>
-          - <MY DOMAIN>
-          - <MY EMAIL ADDRESS>
-          - <MY PEERTUBE SECRET>
+          ## Required next step
+          Edit:
+          `infra/docker/peertube/.env`
 
-          ## Suggested OpenReel usage
-          - Run PeerTube as the media/auth substrate.
-          - Keep OpenReel API as the adapter/ranking/mobile DTO layer.
-          - Point OpenReel API `PEERTUBE_BASE_URL` to your PeerTube base URL.
+          Replace:
+          - `YOUR_DB_PASSWORD`
+          - `YOUR_PEERTUBE_SECRET`
+          - `YOUR_ROOT_PASSWORD`
 
           ## Run
+          ```bash
           cd infra/docker/peertube
           docker compose up -d
+          ```
 
           ## Logs
+          ```bash
           docker compose logs -f peertube
+          ```
+
+          ## OpenReel backend integration
+          Set:
+          ```env
+          PEERTUBE_BASE_URL=https://openreel.duckdns.org
+          PEERTUBE_USERNAME=root
+          PEERTUBE_PASSWORD=YOUR_ROOT_PASSWORD
+          PEERTUBE_CHANNEL_ID=YOUR_CHANNEL_ID
+          PEERTUBE_TOKEN_SCOPE=user
+          ```
           EOF
 
       - name: Show changed files
@@ -82,12 +158,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add infra/docker/peertube
+          git add infra/docker/peertube .gitignore
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0
           fi
 
-          git commit -m "Vendor official PeerTube docker stack"
+          git commit -m "Vendor official PeerTube docker stack with OpenReel defaults"
           git push
